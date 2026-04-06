@@ -1,16 +1,17 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, Partials, ActivityType } = require('discord.js');
 const http = require('http');
 
-// --- RENDER PORTU VE CANLI TUTMA ---
-http.createServer((req, res) => {
+// --- RENDER ICIN PORT ACMA (BOTUN KAPANMASINI ENGELLER) ---
+const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.write("Belgrad Bot Aktif!");
-    res.end();
-}).listen(process.env.PORT || 3000, () => {
-    console.log("==> Render Portu Dinleniyor...");
+    res.end('Belgrad Bot 7/24 Aktif!');
 });
 
-// --- BOT İSTEMCİSİ (Tüm Niyetler Açık) ---
+server.listen(process.env.PORT || 3000, () => {
+    console.log("==> [SİSTEM] Render portu başarıyla açıldı.");
+});
+
+// --- BOTU TANIMLA ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -22,85 +23,82 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-const prefix = "."; // Komut başlangıcı
+const prefix = ".";
 
-// --- BOT HAZIR OLDUĞUNDA ---
+// --- BOT GIRIS YAPINCA ---
 client.on('ready', () => {
-    console.log(`✅ BAŞARILI: ${client.user.tag} sunucuya giriş yaptı!`);
-    client.user.setActivity(`${prefix}help | Belgrad`);
+    console.log(`✅ [BAŞARILI] ${client.user.tag} olarak giriş yapıldı!`);
+    client.user.setPresence({
+        activities: [{ name: 'Belgrad Moderasyon', type: ActivityType.Watching }],
+        status: 'online',
+    });
 });
 
-// --- KOMUT DÖNGÜSÜ ---
-client.on('messageCreate', async message => {
+// --- MODERASYON KOMUTLARI ---
+client.on('messageCreate', async (message) => {
     if (!message.content.startsWith(prefix) || message.author.bot) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // HEDEF BELİRLEME (Etiket veya Yanıt)
-    const getTarget = () => {
-        if (message.mentions.members.first()) return message.mentions.members.first();
-        if (message.reference && message.reference.messageId) {
-            const repliedMessage = message.channel.messages.cache.get(message.reference.messageId);
-            return repliedMessage ? repliedMessage.member : null;
-        }
-        return null;
-    };
+    // Akıllı Hedef Belirleme (Etiket veya Yanıt)
+    const target = message.mentions.members.first() || 
+                   (message.reference ? (await message.channel.messages.fetch(message.reference.messageId)).member : null);
 
-    const target = getTarget();
-
-    // MODERASYON KOMUTLARI
     try {
-        if (command === 'ban') {
-            if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) return message.reply("❌ Yetkin yok.");
-            if (!target) return message.reply("❌ Birini etiketle veya mesajını yanıtla!");
-            await target.ban({ reason: `Sorumlu: ${message.author.tag}` });
-            message.reply(`✅ **${target.user.tag}** yasaklandı.`);
-        }
-
-        if (command === 'kick') {
-            if (!message.member.permissions.has(PermissionFlagsBits.KickMembers)) return message.reply("❌ Yetkin yok.");
-            if (!target) return message.reply("❌ Birini etiketle veya mesajını yanıtla!");
-            await target.kick();
-            message.reply(`✅ **${target.user.tag}** atıldı.`);
-        }
-
-        if (command === 'mute') {
-            if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return message.reply("❌ Yetkin yok.");
-            if (!target) return message.reply("❌ Birini etiketle veya mesajını yanıtla!");
-            await target.timeout(10 * 60 * 1000); // 10 Dakika
-            message.reply(`✅ **${target.user.tag}** 10 dakika susturuldu.`);
-        }
-
-        if (command === 'unmute') {
-            if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return message.reply("❌ Yetkin yok.");
-            if (!target) return message.reply("❌ Birini etiketle veya mesajını yanıtla!");
-            await target.timeout(null);
-            message.reply(`✅ **${target.user.tag}** susturması kaldırıldı.`);
-        }
-
+        // LOCK & UNLOCK
         if (command === 'lock') {
             if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return;
             await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
-            message.reply("🔒 Kanal kilitlendi.");
+            return message.reply("🔒 Kanal kilitlendi.");
         }
 
         if (command === 'unlock') {
             if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return;
             await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
-            message.reply("🔓 Kanal açıldı.");
+            return message.reply("🔓 Kanal açıldı.");
         }
-    } catch (err) {
-        console.error("Komut Hatası:", err);
-        message.reply("❌ Bir hata oluştu (Yetki yetersiz olabilir).");
+
+        // HEDEF GEREKTİREN KOMUTLAR
+        if (!target && ['ban', 'kick', 'mute', 'unmute'].includes(command)) {
+            return message.reply("❌ Birini etiketlemedin veya bir mesajı yanıtlamadın!");
+        }
+
+        if (command === 'ban') {
+            if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) return;
+            await target.ban({ reason: `Mod: ${message.author.tag}` });
+            message.reply(`✅ **${target.user.tag}** yasaklandı.`);
+        }
+
+        if (command === 'kick') {
+            if (!message.member.permissions.has(PermissionFlagsBits.KickMembers)) return;
+            await target.kick();
+            message.reply(`✅ **${target.user.tag}** atıldı.`);
+        }
+
+        if (command === 'mute') {
+            if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
+            await target.timeout(10 * 60 * 1000); // 10 Dakika
+            message.reply(`✅ **${target.user.tag}** 10 dakika susturuldu.`);
+        }
+
+        if (command === 'unmute') {
+            if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
+            await target.timeout(null);
+            message.reply(`✅ **${target.user.tag}** susturması kaldırıldı.`);
+        }
+
+    } catch (error) {
+        console.error("HATA:", error);
+        message.reply("⚠️ İşlem yapılamadı. Botun yetkisinin ve rolünün üstte olduğundan emin ol.");
     }
 });
 
-// --- HATA YAKALAMA VE GİRİŞ ---
-client.login(process.env.TOKEN).catch(err => {
-    console.error("❌ TOKEN HATASI: Token geçersiz veya Intents kapalı!", err.message);
-});
-
-process.on('unhandledRejection', error => {
-    console.error('⚠️ Kritik Hata:', error);
-});
+// --- GİRİŞ VE HATA YAKALAMA ---
+if (!process.env.TOKEN) {
+    console.error("❌ HATA: TOKEN bulunamadı! Render Environment Variables kısmına TOKEN ekle.");
+} else {
+    client.login(process.env.TOKEN).catch(err => {
+        console.error("❌ DISCORD HATASI:", err.message);
+    });
+}

@@ -1,5 +1,6 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, Partials, ActivityType } = require('discord.js');
-const http = require('http');
+client.login(process.env.TOKEN).catch(err => {
+    console.error("❌ DISCORD HATASI:", err.message);
+});
 
 // --- RENDER ICIN PORT ACMA (BOTUN KAPANMASINI ENGELLER) ---
 const server = http.createServer((req, res) => {
